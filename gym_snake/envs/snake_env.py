@@ -88,15 +88,23 @@ class SnakeEnv(gym.Env):
 
     def render(self, mode='human'):
 
-
         if self.viewer is None:
             from gym.envs.classic_control import rendering
             self.viewer = rendering.Viewer(self.screen_width, self.screen_height)
-            cell = rendering.FilledPolygon([])
+            cell = rendering.FilledPolygon([
+                (-GRID.CELL_WIDTH, -GRID.CELL_WIDTH),
+                (-GRID.CELL_WIDTH, GRID.CELL_WIDTH),
+                (GRID.CELL_WIDTH, GRID.CELL_WIDTH),
+                (GRID.CELL_WIDTH, -GRID.CELL_WIDTH),
+            ])
             cell.set_color(100, 0, 0)
+            self.celltrans = rendering.Transform()
+            cell.add_attr(self.celltrans)
             self.viewer.add_geom(cell)
 
         if self.state is STATUS.DIED: return None
+
+        self.celltrans.set_translation(self.screen_width/2, self.screen_height/2)
 
         return self.viewer.render(return_rgb_array=mode == 'rgb_array')
 
