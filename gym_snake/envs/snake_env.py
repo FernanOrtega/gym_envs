@@ -9,14 +9,25 @@ from gym import spaces
 import numpy as np
 
 
-class STATUS(object):
-    DIED = 0
-    ALIVE = 1
+class ACTION(object):
+    T_LEFT = 0
+    CONTINUE = 1
+    T_RIGHT = 2
+
 
 class GRID(object):
     N_ROWS = 50
     N_COLUMNS = 50
     CELL_WIDTH = 10
+
+
+class DIRECTION(object):
+    N = (0, 1)
+    W = (-1, 0)
+    E = (1, 0)
+    S = (0, -1)
+
+    T_DIRECTION = [N, E, S, W]
 
 
 class SnakeEnv(gym.Env):
@@ -27,19 +38,28 @@ class SnakeEnv(gym.Env):
         self.screen_width = GRID.N_COLUMNS * GRID.CELL_WIDTH
         self.screen_height = GRID.N_ROWS * GRID.CELL_WIDTH
 
-        self.state = STATUS.ALIVE
+        self.state = None
 
         self.viewer = None
         self.state = None
 
         self.steps_beyond_done = None
-        self.action_space = spaces.Discrete(4)
+        self.action_space = spaces.Discrete(3)
         self.observation_space = spaces.Box(
             low=0,
-            high=255,
-            shape=(self.screen_width, self.screen_height, 3),
+            high=2,
+            shape=(GRID.N_COLUMNS, GRID.N_ROWS),
             dtype=np.uint8)
-        self.viewer = None
+
+        # Snake attributes
+        self.init_size = 10
+        self.direction = None
+        self.snake = []
+
+        self.snake_trans = []
+
+        # Grid attributes
+        self.fruits = []
 
     def step(self, action):
         """
@@ -72,10 +92,29 @@ class SnakeEnv(gym.Env):
         """
         self._take_action(action)
         reward = self._get_reward()
-        return self.observation_space, reward, self.state == STATUS.DIED, {}
+        return [], reward, False, {}
 
     def _take_action(self, action):
-        pass
+        if action == ACTION.CONTINUE:
+            pass
+        elif action == ACTION.T_LEFT:
+            self.direction = (self.direction - 1) % len(DIRECTION.T_DIRECTION)
+        elif action == ACTION.T_RIGHT:
+            self.direction = (self.direction + 1) % len(DIRECTION.T_DIRECTION)
+        else:
+            #Wrong action
+            pass
+
+        t_direction = DIRECTION.T_DIRECTION[self.direction]
+
+        for i in range(len(self.snake) - 1, 0, -1):
+            self.snake[i] = self.snake[i-1]
+
+        self.snake[0] = (self.snake[0][0] + t_direction[0], self.snake[0][1] + t_direction[1])
+
+
+    def _sample(self):
+        return np.clip(round(np.random.normal(1,0.5)), 0, 2)
 
     def reset(self):
         """
@@ -84,32 +123,42 @@ class SnakeEnv(gym.Env):
         -------
         observation (object): the initial observation of the space.
         """
-        pass
+
+        # Init Snake position (We ensure a secure position)
+        secure_limit = GRID.N_ROWS * 0.10
+        snake_head = (np.random.randint(0 + secure_limit, GRID.N_ROWS - secure_limit),
+                      np.random.randint(0 + secure_limit, GRID.N_COLUMNS - secure_limit))
+        self.direction = np.random.randint(0, 4)
+        opposite_dir = DIRECTION.T_DIRECTION[(self.direction + 2) % 4]
+        self.snake = [snake_head] \
+                     + [(snake_head[0] + opposite_dir[0] * i, snake_head[1] + opposite_dir[1] * i) for i in range(1, self.init_size)]
 
     def render(self, mode='human'):
 
         if self.viewer is None:
             from gym.envs.classic_control import rendering
             self.viewer = rendering.Viewer(self.screen_width, self.screen_height)
-            cell = rendering.FilledPolygon([
-                (-GRID.CELL_WIDTH, -GRID.CELL_WIDTH),
-                (-GRID.CELL_WIDTH, GRID.CELL_WIDTH),
-                (GRID.CELL_WIDTH, GRID.CELL_WIDTH),
-                (GRID.CELL_WIDTH, -GRID.CELL_WIDTH),
-            ])
-            cell.set_color(100, 0, 0)
-            self.celltrans = rendering.Transform()
-            cell.add_attr(self.celltrans)
-            self.viewer.add_geom(cell)
 
-        if self.state is STATUS.DIED: return None
+            for _ in self.snake:
+                cell = rendering.FilledPolygon([
+                    (0, 0),
+                    (0, GRID.CELL_WIDTH),
+                    (GRID.CELL_WIDTH, GRID.CELL_WIDTH),
+                    (GRID.CELL_WIDTH, 0),
+                ])
+                cell.set_color(100, 0, 0)
+                celltrans = rendering.Transform()
+                cell.add_attr(celltrans)
+                self.viewer.add_geom(cell)
+                self.snake_trans.append(celltrans)
 
-        self.celltrans.set_translation(self.screen_width/2, self.screen_height/2)
+        for cell, celltrans in zip(self.snake, self.snake_trans):
+            celltrans.set_translation(cell[0] * GRID.CELL_WIDTH, cell[1] * GRID.CELL_WIDTH)
 
         return self.viewer.render(return_rgb_array=mode == 'rgb_array')
 
     def _get_reward(self):
-        return self.state
+        return 0
 
     def close(self):
         if self.viewer: self.viewer.close()
