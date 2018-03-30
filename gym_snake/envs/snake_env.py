@@ -41,11 +41,10 @@ class SnakeEnv(gym.Env):
         self.num_fruits = 4
 
         self.viewer = None
-        self.state = None
 
-        self.steps_beyond_done = None
+        # self.steps_beyond_done = None
         self.action_space = spaces.Discrete(3)
-        self.observation_space = spaces.Box(
+        self.observation_space = spaces.Box( # 0: Empty, 1: Fruit, 2: Snake
             low=0,
             high=2,
             shape=(GRID.N_COLUMNS, GRID.N_ROWS),
@@ -94,7 +93,7 @@ class SnakeEnv(gym.Env):
         """
         dead, fruit_eaten = self._take_action(action)
         reward = self._get_reward(dead, fruit_eaten)
-        return [], reward, dead, {}
+        return self._create_state(), reward, dead, {}
 
     def _take_action(self, action):
         if action == ACTION.CONTINUE:
@@ -216,6 +215,15 @@ class SnakeEnv(gym.Env):
             result = 100
 
         return result
+
+    def _create_state(self):
+        state = np.zeros(shape=(GRID.N_COLUMNS, GRID.N_ROWS))
+        for fruit in self.fruits:
+            state[fruit[0], fruit[1]] = 1
+        for cell in self.snake:
+            state[cell[0],cell[1]] = 2
+
+        return state
 
     def close(self):
         if self.viewer: self.viewer.close()
