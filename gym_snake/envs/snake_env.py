@@ -10,8 +10,8 @@ import numpy as np
 
 
 class ACTION(object):
-    T_LEFT = 0
-    CONTINUE = 1
+    CONTINUE = 0
+    T_LEFT = 1
     T_RIGHT = 2
 
 
@@ -91,7 +91,12 @@ class SnakeEnv(gym.Env):
         """
         self._take_action(action)
         dead = self._is_dead()
-        reward = self._get_reward()
+        fruit_eaten = self.snake[0] in self.fruits
+        # A fruit was eaten
+        if fruit_eaten:
+            self.fruits.remove(self.snake[0])
+            self.fruits.append(self._create_fruit())
+        reward = self._get_reward(dead, fruit_eaten)
         return [], reward, dead, {}
 
     def _take_action(self, action):
@@ -183,8 +188,14 @@ class SnakeEnv(gym.Env):
 
         return self.viewer.render(return_rgb_array=mode == 'rgb_array')
 
-    def _get_reward(self):
-        return 0
+    def _get_reward(self, dead, fruit_eaten):
+        result = 10
+        if dead:
+            result = -100
+        elif fruit_eaten:
+            result = 100
+
+        return result
 
     def close(self):
         if self.viewer: self.viewer.close()
