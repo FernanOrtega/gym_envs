@@ -37,8 +37,7 @@ class SnakeEnv(gym.Env):
 
         self.screen_width = GRID.N_COLUMNS * GRID.CELL_WIDTH
         self.screen_height = GRID.N_ROWS * GRID.CELL_WIDTH
-
-        self.state = None
+        self.num_fruits = 4
 
         self.viewer = None
         self.state = None
@@ -52,14 +51,14 @@ class SnakeEnv(gym.Env):
             dtype=np.uint8)
 
         # Snake attributes
-        self.init_size = 10
+        self.init_size = 5
         self.direction = None
-        self.snake = []
-
+        self.snake = None
+        self.fruits = None
         self.snake_trans = []
+        self.fruit_trans = []
 
         # Grid attributes
-        self.fruits = []
 
     def step(self, action):
         """
@@ -91,8 +90,9 @@ class SnakeEnv(gym.Env):
                  use this for learning.
         """
         self._take_action(action)
+        dead = self._is_dead()
         reward = self._get_reward()
-        return [], reward, False, {}
+        return [], reward, dead, {}
 
     def _take_action(self, action):
         if action == ACTION.CONTINUE:
@@ -102,19 +102,21 @@ class SnakeEnv(gym.Env):
         elif action == ACTION.T_RIGHT:
             self.direction = (self.direction + 1) % len(DIRECTION.T_DIRECTION)
         else:
-            #Wrong action
+            # Wrong action
             pass
 
         t_direction = DIRECTION.T_DIRECTION[self.direction]
 
         for i in range(len(self.snake) - 1, 0, -1):
-            self.snake[i] = self.snake[i-1]
+            self.snake[i] = self.snake[i - 1]
 
         self.snake[0] = (self.snake[0][0] + t_direction[0], self.snake[0][1] + t_direction[1])
 
-
-    def _sample(self):
-        return np.clip(round(np.random.normal(1,0.5)), 0, 2)
+    def _is_dead(self):
+        head_position = self.snake[0]
+        result = head_position[0] < 0 or head_position[0] >= GRID.N_COLUMNS \
+                 or head_position[1] < 0 or head_position[1] >= GRID.N_ROWS or head_position in self.snake[1:]
+        return result
 
     def reset(self):
         """
@@ -131,7 +133,15 @@ class SnakeEnv(gym.Env):
         self.direction = np.random.randint(0, 4)
         opposite_dir = DIRECTION.T_DIRECTION[(self.direction + 2) % 4]
         self.snake = [snake_head] \
-                     + [(snake_head[0] + opposite_dir[0] * i, snake_head[1] + opposite_dir[1] * i) for i in range(1, self.init_size)]
+                     + [(snake_head[0] + opposite_dir[0] * i, snake_head[1] + opposite_dir[1] * i) for i in
+                        range(1, self.init_size)]
+        self.fruits = [self._create_fruit() for _ in range(self.num_fruits)]
+
+    def _create_fruit(self):
+        while True:
+            fruit = (np.random.randint(0, GRID.N_ROWS), np.random.randint(0, GRID.N_COLUMNS))
+            if fruit not in self.snake or fruit not in self.fruits:
+                return fruit
 
     def render(self, mode='human'):
 
@@ -152,8 +162,24 @@ class SnakeEnv(gym.Env):
                 self.viewer.add_geom(cell)
                 self.snake_trans.append(celltrans)
 
+            for _ in self.fruits:
+                fruit = rendering.FilledPolygon([
+                    (0, 0),
+                    (0, GRID.CELL_WIDTH),
+                    (GRID.CELL_WIDTH, GRID.CELL_WIDTH),
+                    (GRID.CELL_WIDTH, 0),
+                ])
+                fruit.set_color(0, 255, 0)
+                fruittrans = rendering.Transform()
+                fruit.add_attr(fruittrans)
+                self.viewer.add_geom(fruit)
+                self.fruit_trans.append(fruittrans)
+
         for cell, celltrans in zip(self.snake, self.snake_trans):
             celltrans.set_translation(cell[0] * GRID.CELL_WIDTH, cell[1] * GRID.CELL_WIDTH)
+
+        for fruit, celltrans in zip(self.fruits, self.fruit_trans):
+            celltrans.set_translation(fruit[0] * GRID.CELL_WIDTH, fruit[1] * GRID.CELL_WIDTH)
 
         return self.viewer.render(return_rgb_array=mode == 'rgb_array')
 
