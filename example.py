@@ -6,7 +6,7 @@ import numpy as np
 
 env = gym.make('Snake-v0')
 env.reset()
-for t in range(100):
+for t in range(100000):
     env.render()
     time.sleep(0.05)
     # action = env.action_space.sample()
