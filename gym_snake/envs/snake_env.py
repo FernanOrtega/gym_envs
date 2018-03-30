@@ -7,6 +7,7 @@ OpenAI - Request for Research 2.0
 import gym
 from gym import spaces
 import numpy as np
+from gym.envs.classic_control import rendering
 
 
 class ACTION(object):
@@ -52,11 +53,13 @@ class SnakeEnv(gym.Env):
 
         # Snake attributes
         self.init_size = 5
+        self.grow_size = 2
         self.direction = None
         self.snake = None
         self.fruits = None
         self.snake_trans = []
         self.fruit_trans = []
+        self.cells_to_grow = 0
 
         # Grid attributes
 
@@ -89,13 +92,7 @@ class SnakeEnv(gym.Env):
                  However, official evaluations of your agent are not allowed to
                  use this for learning.
         """
-        self._take_action(action)
-        dead = self._is_dead()
-        fruit_eaten = self.snake[0] in self.fruits
-        # A fruit was eaten
-        if fruit_eaten:
-            self.fruits.remove(self.snake[0])
-            self.fruits.append(self._create_fruit())
+        dead, fruit_eaten = self._take_action(action)
         reward = self._get_reward(dead, fruit_eaten)
         return [], reward, dead, {}
 
@@ -112,10 +109,28 @@ class SnakeEnv(gym.Env):
 
         t_direction = DIRECTION.T_DIRECTION[self.direction]
 
-        for i in range(len(self.snake) - 1, 0, -1):
-            self.snake[i] = self.snake[i - 1]
+        new_head_position = (self.snake[0][0] + t_direction[0], self.snake[0][1] + t_direction[1])
 
-        self.snake[0] = (self.snake[0][0] + t_direction[0], self.snake[0][1] + t_direction[1])
+        fruit_eaten = new_head_position in self.fruits
+        # A fruit was eaten
+        if fruit_eaten:
+            self.fruits.remove(new_head_position)
+            self.fruits.append(self._create_fruit())
+            self.cells_to_grow += self.grow_size
+
+        self.snake.insert(0, new_head_position)
+
+        if self.cells_to_grow == 0:
+            self.snake.pop()
+        else:
+            self.cells_to_grow -= 1
+
+        # for i in range(len(self.snake) - 1, 0, -1):
+        #     self.snake[i] = self.snake[i - 1]
+        #
+        # self.snake[0] = new_head_position
+
+        return self._is_dead(), fruit_eaten
 
     def _is_dead(self):
         head_position = self.snake[0]
@@ -151,21 +166,10 @@ class SnakeEnv(gym.Env):
     def render(self, mode='human'):
 
         if self.viewer is None:
-            from gym.envs.classic_control import rendering
             self.viewer = rendering.Viewer(self.screen_width, self.screen_height)
 
             for _ in self.snake:
-                cell = rendering.FilledPolygon([
-                    (0, 0),
-                    (0, GRID.CELL_WIDTH),
-                    (GRID.CELL_WIDTH, GRID.CELL_WIDTH),
-                    (GRID.CELL_WIDTH, 0),
-                ])
-                cell.set_color(100, 0, 0)
-                celltrans = rendering.Transform()
-                cell.add_attr(celltrans)
-                self.viewer.add_geom(cell)
-                self.snake_trans.append(celltrans)
+                self.add_cell_2_snake()
 
             for _ in self.fruits:
                 fruit = rendering.FilledPolygon([
@@ -180,6 +184,9 @@ class SnakeEnv(gym.Env):
                 self.viewer.add_geom(fruit)
                 self.fruit_trans.append(fruittrans)
 
+        for _ in range(len(self.snake_trans), len(self.snake)):
+            self.add_cell_2_snake()
+
         for cell, celltrans in zip(self.snake, self.snake_trans):
             celltrans.set_translation(cell[0] * GRID.CELL_WIDTH, cell[1] * GRID.CELL_WIDTH)
 
@@ -187,6 +194,19 @@ class SnakeEnv(gym.Env):
             celltrans.set_translation(fruit[0] * GRID.CELL_WIDTH, fruit[1] * GRID.CELL_WIDTH)
 
         return self.viewer.render(return_rgb_array=mode == 'rgb_array')
+
+    def add_cell_2_snake(self):
+        cell = rendering.FilledPolygon([
+            (0, 0),
+            (0, GRID.CELL_WIDTH),
+            (GRID.CELL_WIDTH, GRID.CELL_WIDTH),
+            (GRID.CELL_WIDTH, 0),
+        ])
+        cell.set_color(100, 0, 0)
+        celltrans = rendering.Transform()
+        cell.add_attr(celltrans)
+        self.viewer.add_geom(cell)
+        self.snake_trans.append(celltrans)
 
     def _get_reward(self, dead, fruit_eaten):
         result = 10
