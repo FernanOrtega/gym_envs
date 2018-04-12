@@ -10,6 +10,12 @@ import numpy as np
 from gym.envs.classic_control import rendering
 
 
+class REWARD(object):
+    ALIVE_REWARD = -0.5
+    FRUIT_EATEN_REWARD = 25
+    DEAD_REWARD = -10
+
+
 class ACTION(object):
     CONTINUE = 0
     T_LEFT = 1
@@ -17,13 +23,14 @@ class ACTION(object):
 
 
 class GRID(object):
-    N_ROWS = 50
-    N_COLUMNS = 50
-    CELL_WIDTH = 10
-    WALL = -1
+    N_ROWS = 10
+    N_COLUMNS = 10
+    CELL_WIDTH = 25
+    WALL = -100
     EMPTY = 0
-    FRUIT = 1
-    SNAKE = 2
+    FRUIT = 100
+    SNAKE_HEAD = 50
+    SNAKE_BODY = -50
 
 
 class DIRECTION(object):
@@ -39,33 +46,38 @@ class SnakeEnv(gym.Env):
     def __init__(self):
         self.__version__ = "0.0.1"
         print("SnakeEnv - Version {}".format(self.__version__))
-
+        self.metadata['rewards'] = {'dead': REWARD.DEAD_REWARD,
+                                    'alive': REWARD.ALIVE_REWARD,
+                                    'fruit': REWARD.FRUIT_EATEN_REWARD}
         self.screen_width = GRID.N_COLUMNS * GRID.CELL_WIDTH
         self.screen_height = GRID.N_ROWS * GRID.CELL_WIDTH
-        self.num_fruits = 4
+        self.num_fruits = 1
 
         self.viewer = None
 
         # self.steps_beyond_done = None
         self.action_space = spaces.Discrete(3)
-        # -1: Wall, 0: Empty, 1: Fruit, 2: Snake
+        # Wall, Empty, Fruit, Snake
         self.observation_space = spaces.Box(
-            low=-1,
-            high=3,
+            low=GRID.WALL,
+            high=GRID.FRUIT,
             shape=(GRID.N_COLUMNS, GRID.N_ROWS),
             dtype=np.uint8)
 
         # Snake attributes
-        self.init_size = 5
-        self.grow_size = 2
+        self.init_size = 3
+        self.grow_size = 1
         self.direction = None
         self.snake = None
-        self.fruits = None
+        self.fruits = []
         self.snake_trans = []
         self.fruit_trans = []
         self.cells_to_grow = 0
 
         self.empty_state = self._create_empty_state()
+
+        # Useful attributes to debug
+        self.fruits_eaten = 0
 
     def step(self, action):
         """
@@ -98,8 +110,9 @@ class SnakeEnv(gym.Env):
         """
         dead, fruit_eaten = self._take_action(action)
         reward = self._get_reward(dead, fruit_eaten)
-        return self._create_state(), reward, dead, {'head_position': self.snake[0],
-                                                    'head_direction': DIRECTION.T_DIRECTION[self.direction]}
+        return self.current_state(), reward, dead, {'head_position': self.snake[0],
+                                                    'head_direction': DIRECTION.T_DIRECTION[self.direction],
+                                                    'fruits_eaten': self.fruits_eaten}
 
     def _take_action(self, action):
         if action == ACTION.CONTINUE:
@@ -122,6 +135,7 @@ class SnakeEnv(gym.Env):
             self.fruits.remove(new_head_position)
             self.fruits.append(self._create_fruit())
             self.cells_to_grow += self.grow_size
+            self.fruits_eaten += 1
 
         self.snake.insert(0, new_head_position)
 
@@ -152,20 +166,27 @@ class SnakeEnv(gym.Env):
         """
 
         # Init Snake position (We ensure a secure position)
-        secure_limit = GRID.N_ROWS * 0.10
-        snake_head = (np.random.randint(0 + secure_limit, GRID.N_ROWS - secure_limit),
-                      np.random.randint(0 + secure_limit, GRID.N_COLUMNS - secure_limit))
+        # secure_limit = GRID.N_ROWS * 0.10
+        # snake_head = (np.random.randint(0 + secure_limit, GRID.N_ROWS - secure_limit),
+        #               np.random.randint(0 + secure_limit, GRID.N_COLUMNS - secure_limit))
+        snake_head = (round(GRID.N_ROWS / 2), round(GRID.N_COLUMNS / 2))
         self.direction = np.random.randint(0, 4)
         opposite_dir = DIRECTION.T_DIRECTION[(self.direction + 2) % 4]
         self.snake = [snake_head] \
                      + [(snake_head[0] + opposite_dir[0] * i, snake_head[1] + opposite_dir[1] * i) for i in
                         range(1, self.init_size)]
         self.fruits = [self._create_fruit() for _ in range(self.num_fruits)]
+        self.snake_trans.clear()
+        self.fruit_trans.clear()
+        self.cells_to_grow = 0
+        self.fruits_eaten = 0
+        self.close()
+        self.viewer = None
 
     def _create_fruit(self):
         while True:
             fruit = (np.random.randint(1, GRID.N_ROWS - 1), np.random.randint(1, GRID.N_COLUMNS - 1))
-            if fruit not in self.snake or fruit not in self.fruits:
+            if fruit not in self.snake and fruit not in self.fruits:
                 return fruit
 
     def render(self, mode='human'):
@@ -205,21 +226,23 @@ class SnakeEnv(gym.Env):
         self.viewer.add_geom(current_cell)
         return current_celltrans
 
+    # I must think of which reward is the best when nothing appened (dead or fruit eaten)
     def _get_reward(self, dead, fruit_eaten):
-        result = 10
         if dead:
-            result = -100
+            result = REWARD.DEAD_REWARD
         elif fruit_eaten:
-            result = 100
+            result = REWARD.FRUIT_EATEN_REWARD
+        else:  # Still alive but nothing happened
+            result = REWARD.ALIVE_REWARD
 
         return result
 
-    def _create_state(self):
+    def current_state(self):
         state = np.copy(self.empty_state)
         for fruit in self.fruits:
             state[fruit[0], fruit[1]] = GRID.FRUIT
-        for cell_snake in self.snake:
-            state[cell_snake[0], cell_snake[1]] = GRID.SNAKE
+        for pos, cell_snake in enumerate(self.snake):
+            state[cell_snake[0], cell_snake[1]] = GRID.SNAKE_HEAD + int(pos > 0)
 
         return state
 
